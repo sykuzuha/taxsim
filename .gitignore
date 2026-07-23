@@ -1,0 +1,8 @@
+__pycache__/
+*.py[cod]
+.venv/
+.env
+.DS_Store
+tax_profiles.db
+tax_profiles.db-shm
+tax_profiles.db-wal

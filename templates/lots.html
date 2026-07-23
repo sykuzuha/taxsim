@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lot Inventory</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='profile.css') }}">
+</head>
+<body>
+  <nav class="site-nav" aria-label="Main navigation">
+    <div class="nav-inner">
+      <a href="/profile">Profile</a>
+      <a href="/awards">Equity Awards</a>
+      <a href="/transactions">Transactions</a>
+      <a class="active" href="/lots">Lot inventory</a>
+      <a href="/imports">Imports</a>
+    </div>
+  </nav>
+  <main class="container lots-page">
+    <header>
+      <div><h1>Lot inventory</h1><p>Shares created by completed option exercises and RSU settlements.</p></div>
+    </header>
+    <section class="summary-grid" aria-label="Lot summary">
+      <div><span>Shares acquired</span><strong id="sharesAcquired">0</strong></div>
+      <div><span>Shares sold</span><strong id="sharesSold">0</strong></div>
+      <div><span>Shares remaining</span><strong id="sharesRemaining">0</strong></div>
+    </section>
+    <div class="list-toolbar"><h2>All lots</h2></div>
+    <section class="lots-table-wrap">
+      <table class="lots-table">
+        <thead><tr><th>Acquired</th><th>Type</th><th>Acquired</th><th>Sold</th><th>Remaining</th><th>Regular basis</th><th>AMT basis</th><th>Holding start</th></tr></thead>
+        <tbody id="lotsBody"><tr><td colspan="8" class="table-empty">Loading lots...</td></tr></tbody>
+      </table>
+    </section>
+  </main>
+  <script src="{{ url_for('static', filename='lots.js') }}"></script>
+</body>
+</html>

@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Personal Tax Profile</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='profile.css') }}">
+</head>
+<body>
+  <nav class="site-nav" aria-label="Main navigation">
+    <div class="nav-inner">
+      <a class="active" href="/profile">Profile</a>
+      <a href="/awards">Equity Awards</a>
+      <a href="/transactions">Transactions</a>
+      <a href="/lots">Lot inventory</a>
+      <a href="/imports">Imports</a>
+    </div>
+  </nav>
+  <main class="container">
+    <header>
+      <div>
+        <h1>Personal tax profile</h1>
+        <p>Enter the basic information used for your tax estimates.</p>
+      </div>
+      <span class="save-status" id="saveStatus"><i></i> All changes saved</span>
+    </header>
+
+    <form id="profileForm">
+      <section class="form-card" id="filing">
+        <h2>Filing and residence</h2>
+        <div class="field-grid">
+          <label><span>Filing status</span><select name="filing_status"><option>Single</option><option>Married filing jointly</option><option>Married filing separately</option><option>Head of household</option><option>Qualifying surviving spouse</option></select></label>
+          <label><span>Tax year</span><select name="tax_year"><option>2026</option><option>2025</option><option>2024</option></select></label>
+          <label><span>State of residence</span><select name="state"><option>California</option><option>New York</option><option>Texas</option><option>Washington</option><option>Other</option></select></label>
+          <label><span>Residency type</span><select name="residency"><option>Full-year resident</option><option>Part-year resident</option><option>Nonresident</option></select></label>
+        </div>
+      </section>
+
+      <section class="form-card" id="income">
+        <h2>Income</h2>
+        <div class="field-grid">
+          <label><span>Annual salary</span><div class="money-input"><b>$</b><input name="salary" inputmode="decimal" value="185,000"></div></label>
+          <label><span>Other ordinary income</span><div class="money-input"><b>$</b><input name="other_income" inputmode="decimal" value="12,500"></div></label>
+        </div>
+      </section>
+
+      <section class="form-card" id="deductions">
+        <h2>Deductions</h2>
+        <div class="segmented" role="group" aria-label="Deduction type">
+          <button class="selected" type="button" data-deduction="standard"><span>Standard deduction</span></button>
+          <button type="button" data-deduction="itemized"><span>Itemized deductions</span></button>
+        </div>
+        <label class="hidden-field" id="itemizedField"><span>Estimated itemized deductions</span><div class="money-input"><b>$</b><input name="deductions" inputmode="decimal" placeholder="0"></div></label>
+      </section>
+
+      <section class="form-card" id="capital">
+        <h2>Capital gains and losses</h2>
+        <div class="field-grid three">
+          <label><span>Short-term gains or losses</span><div class="money-input"><b>$</b><input name="short_term" inputmode="decimal" value="4,200"></div></label>
+          <label><span>Long-term gains or losses</span><div class="money-input"><b>$</b><input name="long_term" inputmode="decimal" value="28,000"></div></label>
+          <label><span>Loss carryforward</span><div class="money-input"><b>$</b><input name="carryforward" inputmode="decimal" value="0"></div></label>
+        </div>
+      </section>
+
+      <section class="form-card" id="amt">
+        <h2>Prior AMT credit</h2>
+        <label class="single-field"><span>Available AMT credit</span><div class="money-input"><b>$</b><input name="amt_credit" inputmode="decimal" value="0"></div></label>
+      </section>
+
+      <section class="form-card" id="assumptions">
+        <h2>Tax-year assumptions</h2>
+        <div class="field-grid">
+          <label><span>Expected income growth</span><div class="suffix-input"><input name="growth" inputmode="decimal" value="3.0"><b>%</b></div></label>
+          <label><span>Inflation assumption</span><div class="suffix-input"><input name="inflation" inputmode="decimal" value="2.5"><b>%</b></div></label>
+        </div>
+      </section>
+
+      <div class="form-footer">
+        <button class="primary" type="submit" id="saveButton">Save profile</button>
+      </div>
+    </form>
+  </main>
+  <div class="toast" id="toast">Profile saved</div>
+  <script src="{{ url_for('static', filename='profile.js') }}"></script>
+</body>
+</html>

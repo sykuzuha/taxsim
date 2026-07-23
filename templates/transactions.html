@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Transactions</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='profile.css') }}">
+</head>
+<body>
+  <nav class="site-nav" aria-label="Main navigation">
+    <div class="nav-inner">
+      <a href="/profile">Profile</a>
+      <a href="/awards">Equity Awards</a>
+      <a class="active" href="/transactions">Transactions</a>
+      <a href="/lots">Lot inventory</a>
+      <a href="/imports">Imports</a>
+    </div>
+  </nav>
+  <main class="container transactions-page">
+    <header>
+      <div><h1>Transactions</h1><p>Record historical activity and future simulated transactions.</p></div>
+      <div class="header-actions"><a class="secondary-button" href="/api/transactions/export">Export CSV</a><button class="primary" type="button" id="openTransactionForm">Add transaction</button></div>
+    </header>
+    <section class="summary-grid" aria-label="Transaction summary">
+      <div><span>Total transactions</span><strong id="transactionCount">0</strong></div>
+      <div><span>Historical</span><strong id="historicalCount">0</strong></div>
+      <div><span>Future simulated</span><strong id="futureCount">0</strong></div>
+    </section>
+    <section class="form-card transaction-form-card" id="transactionFormCard" hidden>
+      <div class="section-heading"><h2 id="transactionFormTitle">Add transaction</h2><button class="plain-button" type="button" id="closeTransactionForm">Cancel</button></div>
+      <form id="transactionForm">
+        <div class="field-grid">
+          <label><span>Transaction type</span><select name="transaction_type" required><option>Vesting / RSU settlement</option><option>Option exercise</option><option>Share sale</option><option>Tax withholding</option></select></label>
+          <label><span>Transaction status</span><select name="transaction_status" required><option>Historical</option><option>Future simulated</option></select></label>
+          <label><span>Transaction date</span><input type="date" name="transaction_date" required></label>
+          <label><span>Shares</span><input type="number" name="shares" min="0" step="0.0001" value="0" required></label>
+          <label><span>Fair market value per share</span><div class="money-input"><b>$</b><input type="number" name="fmv" min="0" step="0.01" value="0" required></div></label>
+          <label><span>Transaction price per share</span><div class="money-input"><b>$</b><input type="number" name="price" min="0" step="0.01" value="0" required></div></label>
+          <label><span>Fees</span><div class="money-input"><b>$</b><input type="number" name="fees" min="0" step="0.01" value="0"></div></label>
+          <label><span>Selected acquisition lot</span><select name="selected_lot_id" id="selectedLot"><option value="">None</option></select></label>
+          <label><span>Regular-tax basis</span><div class="money-input"><b>$</b><input type="number" name="regular_tax_basis" min="0" step="0.01" value="0"></div></label>
+          <label><span>AMT basis</span><div class="money-input"><b>$</b><input type="number" name="amt_basis" min="0" step="0.01" value="0"></div></label>
+          <label><span>Holding-period start</span><input type="date" name="holding_period_start"></label>
+          <label class="full-width"><span>Selected lots / allocation notes</span><input name="selected_lots" placeholder="Optional lot allocation notes"></label>
+          <label class="full-width"><span>Notes</span><textarea name="notes" rows="3" placeholder="Optional transaction details"></textarea></label>
+        </div>
+        <div class="form-footer"><span class="form-message" id="transactionMessage"></span><button class="primary" type="submit" id="transactionSubmit">Save transaction</button></div>
+      </form>
+    </section>
+    <div class="list-toolbar"><h2>All transactions</h2><select id="transactionFilter" aria-label="Filter transactions"><option value="All">All</option><option value="Historical">Historical</option><option value="Future simulated">Future simulated</option></select></div>
+    <section class="transaction-list" id="transactionList" aria-live="polite"></section>
+  </main>
+  <div class="toast" id="transactionToast">Transaction saved</div>
+  <script src="{{ url_for('static', filename='transactions.js') }}"></script>
+</body>
+</html>

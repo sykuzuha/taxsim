@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Equity Awards</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='profile.css') }}">
+</head>
+<body>
+  <nav class="site-nav" aria-label="Main navigation">
+    <div class="nav-inner">
+      <a href="/profile">Profile</a>
+      <a class="active" href="/awards">Equity Awards</a>
+      <a href="/transactions">Transactions</a>
+      <a href="/lots">Lot inventory</a>
+      <a href="/imports">Imports</a>
+    </div>
+  </nav>
+  <main class="container awards-page">
+    <header>
+      <div>
+        <h1>Equity awards</h1>
+        <p>Track your stock options and restricted stock units.</p>
+      </div>
+      <div class="header-actions"><a class="secondary-button" href="/api/awards/export">Export CSV</a><button class="primary" type="button" id="openAwardForm">Add award</button></div>
+    </header>
+
+    <section class="summary-grid" aria-label="Award summary">
+      <div><span>Total awards</span><strong id="awardCount">0</strong></div>
+      <div><span>Shares granted</span><strong id="totalGranted">0</strong></div>
+      <div><span>Shares vested</span><strong id="totalVested">0</strong></div>
+    </section>
+
+    <section class="form-card award-form-card" id="awardFormCard" hidden>
+      <div class="section-heading">
+        <h2 id="awardFormTitle">Add equity award</h2>
+        <button class="plain-button" type="button" id="closeAwardForm" aria-label="Close form">Cancel</button>
+      </div>
+      <form id="awardForm">
+        <div class="field-grid">
+          <label><span>Company</span><input name="company" required placeholder="Example, Inc."></label>
+          <label><span>Security</span><select name="security" required><option value="Common stock">Common stock</option><option value="Preferred stock">Preferred stock</option><option value="Restricted stock units">Restricted stock units</option><option value="Other equity">Other equity</option></select></label>
+          <label><span>Award type</span><select name="award_type" required><option value="ISO">ISO</option><option value="NSO">NSO</option><option value="RSU">RSU</option></select></label>
+          <label><span>Grant date</span><input type="date" name="grant_date" required></label>
+          <label><span>Expiration date</span><input type="date" name="expiration_date"></label>
+          <label><span>Strike price</span><div class="money-input"><b>$</b><input name="strike_price" type="number" min="0" step="0.01" value="0" required></div></label>
+          <label><span>Shares granted</span><input name="shares_granted" type="number" min="0" step="1" required></label>
+          <label><span>Shares vested</span><input name="shares_vested" type="number" min="0" step="1" value="0" required></label>
+          <label class="full-width"><span>Vesting schedule</span><input name="vesting_schedule" placeholder="Example: 4 years with a 1-year cliff, monthly thereafter"></label>
+          <label><span>QSBS status</span><select name="qsbs_status"><option>Unknown</option><option>Eligible</option><option>Not eligible</option></select></label>
+          <label><span>Acquisition date</span><input type="date" name="acquisition_date"></label>
+          <label class="full-width"><span>QSBS acquisition details</span><textarea name="acquisition_details" rows="3" placeholder="How and when the shares were acquired, original issuance details, or other notes"></textarea></label>
+        </div>
+        <div class="form-footer"><span class="form-message" id="formMessage"></span><button class="primary" type="submit" id="awardSubmitButton">Save award</button></div>
+      </form>
+    </section>
+
+    <section class="awards-list" id="awardsList" aria-live="polite">
+      <div class="empty-state"><h2>No equity awards yet</h2><p>Add your first award to begin tracking it.</p></div>
+    </section>
+  </main>
+  <div class="toast" id="toast">Award saved</div>
+  <script src="{{ url_for('static', filename='awards.js') }}"></script>
+</body>
+</html>
