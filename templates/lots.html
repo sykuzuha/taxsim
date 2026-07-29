@@ -11,28 +11,26 @@
     <div class="nav-inner">
       <a href="/profile">Profile</a>
       <a href="/awards">Equity Awards</a>
+      <a href="/exercises">Exercises</a>
       <a href="/transactions">Transactions</a>
       <a class="active" href="/lots">Lot inventory</a>
+      <a href="/scenarios">Scenarios</a>
       <a href="/imports">Imports</a>
     </div>
   </nav>
   <main class="container lots-page">
     <header>
-      <div><h1>Lot inventory</h1><p>Shares created by completed option exercises and RSU settlements.</p></div>
+      <div><h1>Lot inventory</h1><p>Shares created by completed option exercises and RSU settlements.</p></div><button class="secondary-button danger" type="button" data-clear-page="lots" data-clear-label="lot inventory" data-clear-message="Acquisition transactions and dependent sales that created these lots will also be removed.">Clear data</button>
     </header>
     <section class="summary-grid" aria-label="Lot summary">
       <div><span>Shares acquired</span><strong id="sharesAcquired">0</strong></div>
       <div><span>Shares sold</span><strong id="sharesSold">0</strong></div>
       <div><span>Shares remaining</span><strong id="sharesRemaining">0</strong></div>
     </section>
-    <div class="list-toolbar"><h2>All lots</h2></div>
-    <section class="lots-table-wrap">
-      <table class="lots-table">
-        <thead><tr><th>Acquired</th><th>Type</th><th>Acquired</th><th>Sold</th><th>Remaining</th><th>Regular basis</th><th>AMT basis</th><th>Holding start</th></tr></thead>
-        <tbody id="lotsBody"><tr><td colspan="8" class="table-empty">Loading lots...</td></tr></tbody>
-      </table>
-    </section>
+    <div class="list-toolbar"><h2>All lots</h2><select id="lotFilter" aria-label="Filter lots"><option value="All">All lots</option><option value="Open">Open lots</option><option value="Fully sold">Fully sold lots</option></select></div>
+    <section class="lot-list" id="lotsBody"><div class="empty-state">Loading lots...</div></section>
   </main>
   <script src="{{ url_for('static', filename='lots.js') }}"></script>
+  <script src="{{ url_for('static', filename='clear-data.js') }}"></script>
 </body>
 </html>

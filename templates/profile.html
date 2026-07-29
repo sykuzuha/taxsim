@@ -11,8 +11,10 @@
     <div class="nav-inner">
       <a class="active" href="/profile">Profile</a>
       <a href="/awards">Equity Awards</a>
+      <a href="/exercises">Exercises</a>
       <a href="/transactions">Transactions</a>
       <a href="/lots">Lot inventory</a>
+      <a href="/scenarios">Scenarios</a>
       <a href="/imports">Imports</a>
     </div>
   </nav>
@@ -22,7 +24,7 @@
         <h1>Personal tax profile</h1>
         <p>Enter the basic information used for your tax estimates.</p>
       </div>
-      <span class="save-status" id="saveStatus"><i></i> All changes saved</span>
+      <div class="header-actions"><span class="save-status" id="saveStatus"><i></i> All changes saved</span><button class="secondary-button danger" type="button" data-clear-page="profile" data-clear-label="tax profiles">Clear data</button></div>
     </header>
 
     <form id="profileForm">
@@ -82,5 +84,6 @@
   </main>
   <div class="toast" id="toast">Profile saved</div>
   <script src="{{ url_for('static', filename='profile.js') }}"></script>
+  <script src="{{ url_for('static', filename='clear-data.js') }}"></script>
 </body>
 </html>

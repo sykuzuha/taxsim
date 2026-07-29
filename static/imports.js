@@ -22,7 +22,7 @@ async function loadImports() {
 
 importButton.addEventListener('click', async () => {
   const file = fileInput.files[0];
-  if (!file) { importMessage.textContent = 'Choose a CSV file first.'; return; }
+  if (!file) { importMessage.textContent = 'Choose a CSV or XLSX file first.'; return; }
   importButton.disabled = true;
   importMessage.textContent = 'Importing and rebuilding lot inventory...';
   const body = new FormData(); body.append('file', file);

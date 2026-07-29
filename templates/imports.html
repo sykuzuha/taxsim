@@ -11,21 +11,23 @@
     <div class="nav-inner">
       <a href="/profile">Profile</a>
       <a href="/awards">Equity Awards</a>
+      <a href="/exercises">Exercises</a>
       <a href="/transactions">Transactions</a>
       <a href="/lots">Lot inventory</a>
+      <a href="/scenarios">Scenarios</a>
       <a class="active" href="/imports">Imports</a>
     </div>
   </nav>
   <main class="container imports-page">
     <header>
-      <div><h1>Imports</h1><p>Import a brokerage portfolio CSV and review previous uploads.</p></div>
+      <div><h1>Imports</h1><p>Import brokerage gain/loss or By Benefit Type CSV and XLSX files.</p></div><button class="secondary-button danger" type="button" data-clear-page="imports" data-clear-label="import history">Clear data</button>
     </header>
     <section class="form-card import-card">
-      <h2>Import portfolio CSV</h2>
-      <p>Select a brokerage gain/loss CSV. Awards, transactions, and lots will be added to the database.</p>
+      <h2>Import portfolio file</h2>
+      <p>Select a G&amp;L Expanded or By Benefit Type workbook, or its CSV export. Supported worksheets are detected automatically.</p>
       <div class="upload-row">
-        <input type="file" id="portfolioCsv" accept=".csv,text/csv">
-        <button class="primary" type="button" id="uploadPortfolio">Import CSV</button>
+        <input type="file" id="portfolioCsv" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
+        <button class="primary" type="button" id="uploadPortfolio">Import file</button>
       </div>
       <p class="form-message" id="importMessage"></p>
     </section>
@@ -39,5 +41,6 @@
   </main>
   <div class="toast" id="importToast">Import complete</div>
   <script src="{{ url_for('static', filename='imports.js') }}"></script>
+  <script src="{{ url_for('static', filename='clear-data.js') }}"></script>
 </body>
 </html>

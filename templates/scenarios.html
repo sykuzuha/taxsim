@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Scenarios</title><link rel="stylesheet" href="{{ url_for('static', filename='profile.css') }}">
+</head>
+<body>
+  <nav class="site-nav" aria-label="Main navigation"><div class="nav-inner">
+    <a href="/profile">Profile</a><a href="/awards">Equity Awards</a><a href="/exercises">Exercises</a>
+    <a href="/transactions">Transactions</a><a href="/lots">Lot inventory</a>
+    <a class="active" href="/scenarios">Scenarios</a><a href="/imports">Imports</a>
+  </div></nav>
+  <main class="container scenarios-page">
+    <header><div><h1>Scenarios</h1><p>Model future activity without changing the historical ledger.</p></div><div class="header-actions"><button class="secondary-button danger" type="button" data-clear-page="scenarios" data-clear-label="scenarios">Clear data</button><button class="primary" id="newScenario">New scenario</button></div></header>
+    <div class="scenario-layout">
+    <div class="scenario-main">
+    <section id="scenarioWorkspace" hidden>
+      <div class="scenario-title"><div><label class="inline-scenario-name"><span>Scenario name</span><input id="scenarioName" aria-label="Scenario name"></label><p>Same-day order: RSU settlements, option exercises, tax withholding, then share sales.</p></div>
+        <div class="header-actions"><button class="secondary-button" id="duplicateScenario">Duplicate</button><button class="secondary-button danger" id="deleteScenario">Delete</button></div>
+      </div>
+      <section class="summary-grid"><div><span>Transactions</span><strong id="scenarioTxCount">0</strong></div><div><span>Invalid</span><strong id="scenarioInvalid">0</strong></div><div><span>Projected shares</span><strong id="scenarioShares">0</strong></div></section>
+      <div class="scenario-grid">
+        <section class="form-card"><h2>Add hypothetical transaction</h2><form id="scenarioTransactionForm"><div class="field-grid">
+          <label><span>Type</span><select name="transaction_type"><option>Option exercise</option><option>Vesting / RSU settlement</option><option>Tax withholding</option><option>Share sale</option></select></label>
+          <label><span>Date</span><input type="date" name="transaction_date" required></label>
+          <label><span>Shares</span><input type="number" name="shares" min="0.0001" step="0.0001" required></label>
+          <label><span>Source award</span><select name="award_id" id="scenarioAward"><option value="">None</option></select></label>
+          <label><span>Source lot</span><select name="selected_lot_key" id="scenarioLot"><option value="">None</option></select></label>
+          <label><span>FMV / share</span><input type="number" name="fmv" min="0" step="0.01" value="0"></label>
+          <label><span>Price / share</span><input type="number" name="price" min="0" step="0.01" value="0"></label>
+          <label><span>Fees</span><input type="number" name="fees" min="0" step="0.01" value="0"></label>
+          <label class="full-width"><span>Notes</span><input name="notes"></label>
+        </div><div class="form-footer"><span class="form-message" id="scenarioMessage"></span><button class="primary">Add transaction</button></div></form></section>
+        <section class="form-card"><h2>Annual projections</h2><form id="yearForm"><div class="field-grid">
+          <label><span>Tax year</span><input type="number" name="tax_year" min="1900" max="2200" required></label>
+          <label><span>Projected share price</span><input type="number" name="projected_price" min="0" step="0.01"></label>
+          <label><span>Salary</span><input type="number" name="salary" step="0.01"></label><label><span>Other income</span><input type="number" name="other_income" step="0.01"></label>
+          <label><span>Deductions</span><input type="number" name="deductions" step="0.01"></label><label><span>Short-term gains</span><input type="number" name="short_term_gains" step="0.01"></label>
+          <label><span>Long-term gains</span><input type="number" name="long_term_gains" step="0.01"></label>
+        </div><div class="form-footer"><button class="primary">Save year</button></div></form>
+        <h2 class="subheading">Price by specific date</h2><form id="priceForm"><div class="field-grid"><label><span>Date or year</span><input name="price_date" placeholder="2030 or 2030-06-30" required></label><label><span>Projected price</span><input type="number" name="projected_price" min="0" step="0.01" required></label></div><div class="form-footer"><button class="secondary-button">Save price</button></div></form></section>
+      </div>
+      <div class="list-toolbar"><h2>Scenario timeline</h2></div><section id="scenarioTimeline" class="transaction-list"></section>
+      <div class="list-toolbar"><h2>Annual inputs</h2></div><section class="lots-table-wrap"><table class="lots-table"><thead><tr><th>Year</th><th>Price</th><th>Salary</th><th>Other income</th><th>Deductions</th><th>ST gains</th><th>LT gains</th></tr></thead><tbody id="yearRows"></tbody></table></section>
+      <div class="list-toolbar"><h2>Dated price projections</h2></div><section class="lots-table-wrap"><table class="lots-table"><thead><tr><th>Date or year</th><th>Projected share price</th></tr></thead><tbody id="priceRows"></tbody></table></section>
+    </section>
+    <section class="compare-section"><div class="list-toolbar"><h2>Compare scenarios</h2></div><div id="scenarioComparison" class="summary-grid"></div></section>
+    </div>
+    <aside class="scenario-sidebar">
+      <div class="scenario-sidebar-heading"><h2>Scenarios</h2><span>Drag to reorder</span></div>
+      <label><span>Sort by</span><select id="scenarioSort"><option value="custom">Custom order</option><option value="name">Name</option><option value="recent">Recently updated</option></select></label>
+      <nav class="scenario-picker" aria-label="Scenario list"><div id="scenarioTabs"></div></nav>
+    </aside>
+    </div>
+  </main>
+  <script src="{{ url_for('static', filename='scenarios.js') }}"></script>
+  <script src="{{ url_for('static', filename='clear-data.js') }}"></script>
+</body></html>

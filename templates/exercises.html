@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Exercises</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='profile.css') }}">
+</head>
+<body>
+  <nav class="site-nav" aria-label="Main navigation">
+    <div class="nav-inner">
+      <a href="/profile">Profile</a>
+      <a href="/awards">Equity Awards</a>
+      <a class="active" href="/exercises">Exercises</a>
+      <a href="/transactions">Transactions</a>
+      <a href="/lots">Lot inventory</a>
+      <a href="/scenarios">Scenarios</a>
+      <a href="/imports">Imports</a>
+    </div>
+  </nav>
+  <main class="container exercises-page">
+    <header>
+      <div><h1>Exercises</h1><p>Record option exercises and connect each one to an equity award.</p></div>
+      <div class="header-actions"><button class="secondary-button danger" type="button" data-clear-page="exercises" data-clear-label="exercises" data-clear-message="Linked acquisition lots and dependent sales will also be removed.">Clear data</button><button class="primary" type="button" id="openExerciseForm">Add exercise</button></div>
+    </header>
+    <section class="summary-grid" aria-label="Exercise summary">
+      <div><span>Total exercises</span><strong id="exerciseCount">0</strong></div>
+      <div><span>Shares exercised</span><strong id="exerciseShares">0</strong></div>
+      <div><span>Total exercise cost</span><strong id="exerciseCost">$0.00</strong></div>
+    </section>
+    <section class="form-card transaction-form-card" id="exerciseFormCard" hidden>
+      <div class="section-heading"><h2>Add exercise</h2><button class="plain-button" type="button" id="closeExerciseForm">Cancel</button></div>
+      <form id="exerciseForm">
+        <div class="field-grid">
+          <label class="full-width"><span>Equity award</span><select name="award_id" id="exerciseAward" required><option value="">Loading awards…</option></select></label>
+          <label><span>Exercise date</span><input type="date" name="exercise_date" required></label>
+          <label><span>Number of shares</span><input type="number" name="shares" min="0.0001" step="0.0001" required></label>
+          <label><span>Fair market value per share (FMV)</span><div class="money-input"><b>$</b><input type="number" name="fmv" min="0" step="0.01" required></div></label>
+          <label><span>Exercise price per share</span><div class="money-input"><b>$</b><input type="number" name="exercise_price" min="0" step="0.01" required></div></label>
+        </div>
+        <div class="form-footer"><span class="form-message" id="exerciseMessage"></span><button class="primary" type="submit">Save exercise</button></div>
+      </form>
+    </section>
+    <div class="list-toolbar"><h2>Exercise history</h2></div>
+    <section class="transaction-list" id="exerciseList" aria-live="polite"></section>
+  </main>
+  <div class="toast" id="exerciseToast">Exercise saved</div>
+  <script src="{{ url_for('static', filename='exercises.js') }}"></script>
+  <script src="{{ url_for('static', filename='clear-data.js') }}"></script>
+</body>
+</html>
