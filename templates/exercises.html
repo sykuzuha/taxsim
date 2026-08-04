@@ -13,8 +13,8 @@
       <a href="/awards">Equity Awards</a>
       <a class="active" href="/exercises">Exercises</a>
       <a href="/transactions">Transactions</a>
-      <a href="/lots">Lot inventory</a>
       <a href="/scenarios">Scenarios</a>
+      <a href="/tax-results">Tax Results</a>
       <a href="/imports">Imports</a>
     </div>
   </nav>
@@ -29,7 +29,7 @@
       <div><span>Total exercise cost</span><strong id="exerciseCost">$0.00</strong></div>
     </section>
     <section class="form-card transaction-form-card" id="exerciseFormCard" hidden>
-      <div class="section-heading"><h2>Add exercise</h2><button class="plain-button" type="button" id="closeExerciseForm">Cancel</button></div>
+      <div class="section-heading"><h2 id="exerciseFormTitle">Add exercise</h2><button class="plain-button" type="button" id="closeExerciseForm">Cancel</button></div>
       <form id="exerciseForm">
         <div class="field-grid">
           <label class="full-width"><span>Equity award</span><select name="award_id" id="exerciseAward" required><option value="">Loading awards…</option></select></label>
@@ -38,7 +38,17 @@
           <label><span>Fair market value per share (FMV)</span><div class="money-input"><b>$</b><input type="number" name="fmv" min="0" step="0.01" required></div></label>
           <label><span>Exercise price per share</span><div class="money-input"><b>$</b><input type="number" name="exercise_price" min="0" step="0.01" required></div></label>
         </div>
-        <div class="form-footer"><span class="form-message" id="exerciseMessage"></span><button class="primary" type="submit">Save exercise</button></div>
+        <section class="exercise-tax-estimate" id="exerciseTaxEstimate" aria-live="polite">
+          <div class="estimate-heading"><div><h3>Estimated tax impact</h3><p id="estimateDescription">Complete the exercise details to compare regular tax and AMT.</p></div><span class="estimate-badge">Planning estimate</span></div>
+          <div class="estimate-metrics">
+            <div><span>Exercise spread</span><strong id="estimateSpread">—</strong></div>
+            <div><span>Non-AMT tax</span><strong id="estimateRegularTax">—</strong><small id="estimateRegularDetail">Federal + state</small></div>
+            <div><span>Estimated AMT</span><strong id="estimateAmt">—</strong><small>Incremental federal AMT</small></div>
+            <div class="estimate-total"><span>Cost + estimated tax</span><strong id="estimateCash">—</strong><small>Before withholding and fees</small></div>
+          </div>
+          <div class="estimate-breakdown" id="estimateBreakdown" hidden></div>
+        </section>
+        <div class="form-footer"><span class="form-message" id="exerciseMessage"></span><button class="primary" type="submit" id="exerciseSubmit">Save exercise</button></div>
       </form>
     </section>
     <div class="list-toolbar"><h2>Exercise history</h2></div>

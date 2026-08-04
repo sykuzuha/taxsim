@@ -7,8 +7,8 @@
 <body>
   <nav class="site-nav" aria-label="Main navigation"><div class="nav-inner">
     <a href="/profile">Profile</a><a href="/awards">Equity Awards</a><a href="/exercises">Exercises</a>
-    <a href="/transactions">Transactions</a><a href="/lots">Lot inventory</a>
-    <a class="active" href="/scenarios">Scenarios</a><a href="/imports">Imports</a>
+    <a href="/transactions">Transactions</a>
+    <a class="active" href="/scenarios">Scenarios</a><a href="/tax-results">Tax Results</a><a href="/imports">Imports</a>
   </div></nav>
   <main class="container scenarios-page">
     <header><div><h1>Scenarios</h1><p>Model future activity without changing the historical ledger.</p></div><div class="header-actions"><button class="secondary-button danger" type="button" data-clear-page="scenarios" data-clear-label="scenarios">Clear data</button><button class="primary" id="newScenario">New scenario</button></div></header>
@@ -21,16 +21,16 @@
       <section class="summary-grid"><div><span>Transactions</span><strong id="scenarioTxCount">0</strong></div><div><span>Invalid</span><strong id="scenarioInvalid">0</strong></div><div><span>Projected shares</span><strong id="scenarioShares">0</strong></div></section>
       <div class="scenario-grid">
         <section class="form-card"><h2>Add hypothetical transaction</h2><form id="scenarioTransactionForm"><div class="field-grid">
-          <label><span>Type</span><select name="transaction_type"><option>Option exercise</option><option>Vesting / RSU settlement</option><option>Tax withholding</option><option>Share sale</option></select></label>
+          <label><span>Type</span><select name="transaction_type" id="scenarioTransactionType"><option>Option exercise</option><option>Vesting / RSU settlement</option><option>Tax withholding</option><option>Share sale</option></select></label>
           <label><span>Date</span><input type="date" name="transaction_date" required></label>
-          <label><span>Shares</span><input type="number" name="shares" min="0.0001" step="0.0001" required></label>
-          <label><span>Source award</span><select name="award_id" id="scenarioAward"><option value="">None</option></select></label>
-          <label><span>Source lot</span><select name="selected_lot_key" id="scenarioLot"><option value="">None</option></select></label>
-          <label><span>FMV / share</span><input type="number" name="fmv" min="0" step="0.01" value="0"></label>
-          <label><span>Price / share</span><input type="number" name="price" min="0" step="0.01" value="0"></label>
-          <label><span>Fees</span><input type="number" name="fees" min="0" step="0.01" value="0"></label>
+          <label data-scenario-field="shares"><span id="scenarioSharesLabel">Shares</span><input type="number" name="shares" min="0.0001" step="0.0001" required></label>
+          <label data-scenario-field="award"><span>Source award</span><select name="award_id" id="scenarioAward"><option value="">Select an award</option></select></label>
+          <label data-scenario-field="lot"><span>Source lot</span><select name="selected_lot_key" id="scenarioLot"><option value="">Select a lot</option></select></label>
+          <label data-scenario-field="fmv"><span>FMV / share</span><input type="number" name="fmv" min="0" step="0.01"></label>
+          <label data-scenario-field="price"><span id="scenarioPriceLabel">Price / share</span><input type="number" name="price" min="0" step="0.01"></label>
+          <label data-scenario-field="fees"><span>Fees</span><input type="number" name="fees" min="0" step="0.01" value="0"></label>
           <label class="full-width"><span>Notes</span><input name="notes"></label>
-        </div><div class="form-footer"><span class="form-message" id="scenarioMessage"></span><button class="primary">Add transaction</button></div></form></section>
+        </div><p class="scenario-form-help" id="scenarioFormHelp"></p><div class="form-footer"><span class="form-message" id="scenarioMessage"></span><button class="primary">Add transaction</button></div></form></section>
         <section class="form-card"><h2>Annual projections</h2><form id="yearForm"><div class="field-grid">
           <label><span>Tax year</span><input type="number" name="tax_year" min="1900" max="2200" required></label>
           <label><span>Projected share price</span><input type="number" name="projected_price" min="0" step="0.01"></label>

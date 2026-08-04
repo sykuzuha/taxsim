@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tax Results</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='profile.css') }}">
+</head>
+<body>
+  <nav class="site-nav" aria-label="Main navigation"><div class="nav-inner">
+    <a href="/profile">Profile</a><a href="/awards">Equity Awards</a><a href="/exercises">Exercises</a>
+    <a href="/transactions">Transactions</a>
+    <a href="/scenarios">Scenarios</a><a class="active" href="/tax-results">Tax Results</a><a href="/imports">Imports</a>
+  </div></nav>
+  <main class="container tax-results-page">
+    <header>
+      <div><div class="eyebrow">ESTIMATED TAX POSITION</div><h1>Tax Results</h1><p id="resultSubtitle">Combined federal, state, equity, and AMT estimate.</p></div>
+      <label class="year-picker"><span>Tax year</span><select id="taxYear"><option>2026</option><option>2025</option><option>2024</option></select></label>
+    </header>
+    <div class="notice" id="profileNotice" hidden>No saved profile exists for this year. <a href="/profile">Add your income and filing details</a> for a complete estimate.</div>
+    <nav class="result-tabs" aria-label="Tax result sections">
+      <button class="active" data-tab="summary">Annual Summary</button>
+      <button data-tab="income">Income Breakdown</button>
+      <button data-tab="capital">Capital Gains</button>
+      <button data-tab="amt">AMT</button>
+      <button data-tab="details">Calculation Details</button>
+    </nav>
+    <section class="result-panel active" data-panel="summary">
+      <div class="hero-summary">
+        <div><span>Estimated total tax</span><strong id="totalTax">$0</strong><small id="effectiveRate">— effective rate</small></div>
+        <div class="hero-divider"></div>
+        <div><span>Cash required</span><strong id="cashRequired">$0</strong><small>After recorded withholding</small></div>
+        <div><span>After-tax proceeds</span><strong id="afterTax">$0</strong><small>Net equity sale proceeds</small></div>
+      </div>
+      <div class="metric-grid" id="annualMetrics"></div>
+      <section class="result-card">
+        <div class="card-heading"><div><h2>Estimated tax composition</h2><p>What makes up your combined liability.</p></div><span class="estimate-badge">Estimate</span></div>
+        <div class="tax-composition" id="taxComposition"></div>
+      </section>
+    </section>
+    <section class="result-panel" data-panel="income">
+      <div class="section-intro"><h2>Income breakdown</h2><p>Ordinary income included in this estimate, grouped by source.</p></div>
+      <section class="result-card breakdown-list" id="incomeBreakdown"></section>
+    </section>
+    <section class="result-panel" data-panel="capital">
+      <div class="section-intro"><h2>Capital gains</h2><p>Regular and AMT gain by sale, with holding-period classification.</p></div>
+      <div class="split-summary" id="capitalSummary"></div>
+      <section class="result-card table-card"><table class="result-table"><thead><tr><th>Sale</th><th>Classification</th><th>Proceeds</th><th>Basis</th><th>Regular gain</th><th>AMT gain</th></tr></thead><tbody id="capitalRows"></tbody></table></section>
+    </section>
+    <section class="result-panel" data-panel="amt">
+      <div class="section-intro"><h2>Alternative minimum tax</h2><p>ISO exercise adjustments and the bridge from regular tax to AMT.</p></div>
+      <section class="result-card amt-bridge" id="amtBridge"></section>
+      <div class="section-intro compact"><h2>ISO exercises</h2></div>
+      <section class="result-card table-card"><table class="result-table"><thead><tr><th>Exercise</th><th>Shares</th><th>Strike</th><th>FMV</th><th>AMT adjustment</th><th>Basis (regular / AMT)</th></tr></thead><tbody id="isoRows"></tbody></table></section>
+    </section>
+    <section class="result-panel" data-panel="details">
+      <div class="section-intro"><h2>Calculation details</h2><p>Follow each transaction from event through tax treatment.</p></div>
+      <div class="detail-filters"><button class="selected" data-filter="all">All</button><button data-filter="ISO">ISO</button><button data-filter="NSO">NSO</button><button data-filter="RSU">RSU</button><button data-filter="disposition">Dispositions</button></div>
+      <div class="calculation-list" id="calculationList"></div>
+    </section>
+    <p class="legal-note">Planning estimate only. Federal brackets, deductions, AMT exemptions, and state rates are simplified and may not reflect every tax rule or your final return.</p>
+  </main>
+  <script src="{{ url_for('static', filename='tax-results.js') }}"></script>
+</body></html>

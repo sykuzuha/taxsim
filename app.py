@@ -8,7 +8,7 @@ import xml.etree.ElementTree as ET
 from datetime import datetime
 from pathlib import Path
 
-from flask import Flask, Response, g, jsonify, render_template, request
+from flask import Flask, Response, g, jsonify, redirect, render_template, request
 
 app = Flask(__name__)
 app.config["DATABASE"] = Path(app.root_path) / "tax_profiles.db"
@@ -271,6 +271,8 @@ def init_db():
     )
     migrate_inline_vesting_schedules(database)
     link_transactions_to_awards(database)
+    consolidate_duplicate_awards(database)
+    backfill_exercise_records(database)
     database.commit()
     rebuild_portfolio_lots(database)
     database.commit()
@@ -795,6 +797,155 @@ def link_transactions_to_awards(database):
             )
 
 
+def consolidate_duplicate_awards(database):
+    """Merge records that represent the same numbered grant across import sources."""
+    duplicate_keys = database.execute(
+        """SELECT LOWER(TRIM(company)) AS company_key, UPPER(award_type) AS type_key,
+                  LOWER(TRIM(grant_number)) AS grant_key
+           FROM equity_awards
+           WHERE TRIM(grant_number) != ''
+           GROUP BY company_key, type_key, grant_key
+           HAVING COUNT(*) > 1"""
+    ).fetchall()
+    merged = 0
+    for key in duplicate_keys:
+        awards = database.execute(
+            """SELECT a.*, COUNT(v.id) AS event_count,
+                      COALESCE(SUM(v.shares), 0) AS scheduled_shares
+               FROM equity_awards a
+               LEFT JOIN vesting_events v ON v.award_id = a.id
+               WHERE LOWER(TRIM(a.company)) = ? AND UPPER(a.award_type) = ?
+                 AND LOWER(TRIM(a.grant_number)) = ?
+               GROUP BY a.id""",
+            (key["company_key"], key["type_key"], key["grant_key"]),
+        ).fetchall()
+        canonical = max(
+            awards,
+            key=lambda row: (
+                row["event_count"] > 0,
+                row["scheduled_shares"],
+                row["shares_granted"],
+                row["id"],
+            ),
+        )
+        canonical_id = canonical["id"]
+        for duplicate in awards:
+            if duplicate["id"] == canonical_id:
+                continue
+            duplicate_id = duplicate["id"]
+            for event in database.execute(
+                "SELECT * FROM vesting_events WHERE award_id = ? ORDER BY id", (duplicate_id,)
+            ).fetchall():
+                matching = database.execute(
+                    """SELECT id FROM vesting_events
+                       WHERE award_id = ? AND vest_date = ? AND ABS(shares - ?) < 0.0001
+                       ORDER BY id LIMIT 1""",
+                    (canonical_id, event["vest_date"], event["shares"]),
+                ).fetchone()
+                if matching:
+                    database.execute(
+                        "UPDATE transactions SET vesting_event_id = ? WHERE vesting_event_id = ?",
+                        (matching["id"], event["id"]),
+                    )
+                    database.execute("DELETE FROM vesting_events WHERE id = ?", (event["id"],))
+                elif canonical["event_count"] == 0 or database.execute(
+                    "SELECT 1 FROM transactions WHERE vesting_event_id = ?", (event["id"],)
+                ).fetchone():
+                    database.execute(
+                        "UPDATE vesting_events SET award_id = ? WHERE id = ?",
+                        (canonical_id, event["id"]),
+                    )
+                else:
+                    database.execute("DELETE FROM vesting_events WHERE id = ?", (event["id"],))
+            database.execute("UPDATE exercises SET award_id = ? WHERE award_id = ?", (canonical_id, duplicate_id))
+            database.execute(
+                "UPDATE transactions SET award_id = ?, company = ?, security = ? WHERE award_id = ?",
+                (canonical_id, canonical["company"], canonical["security"], duplicate_id),
+            )
+            database.execute(
+                """UPDATE equity_awards SET
+                     shares_granted = MAX(shares_granted, ?),
+                     shares_vested = MAX(shares_vested, ?),
+                     shares_canceled = MAX(shares_canceled, ?),
+                     expiration_date = CASE
+                       WHEN COALESCE(expiration_date, '') >= COALESCE(?, '') THEN expiration_date ELSE ? END,
+                     notes = CASE WHEN LENGTH(TRIM(notes)) >= LENGTH(TRIM(?)) THEN notes ELSE ? END,
+                     acquisition_details = CASE
+                       WHEN LENGTH(TRIM(acquisition_details)) >= LENGTH(TRIM(?))
+                       THEN acquisition_details ELSE ? END
+                   WHERE id = ?""",
+                (
+                    duplicate["shares_granted"], duplicate["shares_vested"], duplicate["shares_canceled"],
+                    duplicate["expiration_date"], duplicate["expiration_date"],
+                    duplicate["notes"], duplicate["notes"],
+                    duplicate["acquisition_details"], duplicate["acquisition_details"], canonical_id,
+                ),
+            )
+            database.execute("DELETE FROM equity_awards WHERE id = ?", (duplicate_id,))
+            merged += 1
+        events = database.execute(
+            "SELECT vest_date, shares FROM vesting_events WHERE award_id = ? ORDER BY vest_date, id",
+            (canonical_id,),
+        ).fetchall()
+        if events:
+            schedule_type, start, duration, summary = schedule_metadata(
+                [(event["vest_date"], event["shares"]) for event in events]
+            )
+            database.execute(
+                """UPDATE equity_awards SET vesting_schedule = ?, schedule_type = ?,
+                   vesting_start = ?, vesting_duration_months = ? WHERE id = ?""",
+                (summary, schedule_type, start, duration, canonical_id),
+            )
+    return merged
+
+
+def backfill_exercise_records(database):
+    """Give imported option-exercise transactions editable exercise records."""
+    cursor = database.execute(
+        """INSERT INTO exercises (award_id, exercise_date, fmv, shares, exercise_price, transaction_id)
+           SELECT t.award_id, t.transaction_date, t.fmv, t.shares, t.price, t.id
+           FROM transactions t
+           JOIN equity_awards a ON a.id = t.award_id
+           WHERE t.transaction_type = 'Option exercise'
+             AND t.transaction_status = 'Historical'
+             AND a.award_type IN ('ISO', 'NSO')
+             AND NOT EXISTS (SELECT 1 FROM exercises e WHERE e.transaction_id = t.id)"""
+    )
+    return cursor.rowcount
+
+
+def sync_exercise_record(database, transaction_id):
+    transaction = database.execute(
+        """SELECT t.*, a.award_type FROM transactions t
+           LEFT JOIN equity_awards a ON a.id = t.award_id WHERE t.id = ?""",
+        (transaction_id,),
+    ).fetchone()
+    qualifies = transaction and transaction["transaction_type"] == "Option exercise" and transaction["transaction_status"] == "Historical" and transaction["award_type"] in {"ISO", "NSO"}
+    existing = database.execute(
+        "SELECT id FROM exercises WHERE transaction_id = ?", (transaction_id,)
+    ).fetchone()
+    if not qualifies:
+        if existing:
+            database.execute("DELETE FROM exercises WHERE id = ?", (existing["id"],))
+        return
+    values = (
+        transaction["award_id"], transaction["transaction_date"], transaction["fmv"],
+        transaction["shares"], transaction["price"], transaction_id,
+    )
+    if existing:
+        database.execute(
+            """UPDATE exercises SET award_id = ?, exercise_date = ?, fmv = ?, shares = ?,
+               exercise_price = ?, transaction_id = ? WHERE id = ?""",
+            (*values, existing["id"]),
+        )
+    else:
+        database.execute(
+            """INSERT INTO exercises (award_id, exercise_date, fmv, shares, exercise_price, transaction_id)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            values,
+        )
+
+
 def import_benefit_type_portfolio(database, headers, rows):
     """Import a By Benefit Type equity export into awards and the lot ledger."""
     positions = {}
@@ -1070,7 +1221,7 @@ def exercises():
 
 @app.get("/lots")
 def lots():
-    return render_template("lots.html")
+    return redirect("/awards#allLots", code=302)
 
 
 @app.get("/imports")
@@ -1081,6 +1232,204 @@ def imports():
 @app.get("/scenarios")
 def scenarios():
     return render_template("scenarios.html")
+
+
+@app.get("/tax-results")
+def tax_results():
+    return render_template("tax_results.html")
+
+
+def progressive_tax(income, brackets):
+    total = 0
+    previous = 0
+    for ceiling, rate in brackets:
+        taxable = max(0, min(income, ceiling) - previous)
+        total += taxable * rate
+        previous = ceiling
+        if income <= ceiling:
+            break
+    return total
+
+
+def tax_results_for_year(database, tax_year):
+    """Build an explainable annual estimate from the historical equity ledger."""
+    profile_row = database.execute(
+        "SELECT * FROM tax_profiles WHERE tax_year = ?", (tax_year,)
+    ).fetchone()
+    profile = dict(profile_row) if profile_row else {
+        "filing_status": "Single", "state": "California", "salary": 0,
+        "other_income": 0, "deduction_type": "standard", "deductions": 0,
+        "short_term": 0, "long_term": 0, "carryforward": 0, "amt_credit": 0,
+    }
+    status = profile.get("filing_status") or "Single"
+    joint = status in {"Married filing jointly", "Qualifying surviving spouse"}
+    standard_deduction = 30000 if joint else (22500 if status == "Head of household" else 15000)
+    deduction = profile["deductions"] if profile.get("deduction_type") == "itemized" else standard_deduction
+    rows = database.execute(
+        """SELECT t.*, a.award_type, a.grant_date, a.strike_price, a.grant_number,
+                  COALESCE(NULLIF(t.company,''), a.company, '') AS display_company,
+                  COALESCE(NULLIF(t.security,''), a.security, '') AS display_security
+           FROM transactions t LEFT JOIN equity_awards a ON a.id = t.award_id
+           WHERE t.transaction_status = 'Historical' AND SUBSTR(t.transaction_date,1,4) = ?
+           ORDER BY t.transaction_date, t.id""", (str(tax_year),)
+    ).fetchall()
+    all_transactions = {
+        row["id"]: row for row in database.execute(
+            """SELECT t.*, a.award_type, a.grant_date, a.strike_price, a.grant_number
+               FROM transactions t LEFT JOIN equity_awards a ON a.id = t.award_id"""
+        )
+    }
+    iso_comp = nso_comp = rsu_income = stcg = ltcg = amt_adjustment = proceeds = withholding = 0
+    details = []
+    capital_sales = []
+    iso_exercises = []
+
+    for row in rows:
+        shares = row["shares"] or 0
+        award_type = row["award_type"] or ""
+        if row["transaction_type"] == "Option exercise":
+            spread = max(0, (row["fmv"] - row["price"]) * shares)
+            if award_type == "ISO":
+                amt_adjustment += spread
+                iso_exercises.append({
+                    "id": row["id"], "date": row["transaction_date"], "company": row["display_company"],
+                    "shares": shares, "strike": row["price"], "fmv": row["fmv"], "spread": spread,
+                    "regular_basis": row["regular_tax_basis"], "amt_basis": row["amt_basis"],
+                })
+                details.append({
+                    "id": f"exercise-{row['id']}", "date": row["transaction_date"],
+                    "title": f"Exercise {shares:g} ISO · {row['display_company']}",
+                    "type": "ISO exercise", "amount": spread,
+                    "steps": [
+                        ["Exercise", f"{shares:g} ISO at ${row['price']:,.2f}/share"],
+                        ["Spread", f"${max(0, row['fmv'] - row['price']):,.2f}/share"],
+                        ["AMT adjustment", f"${spread:,.0f} added to AMTI"],
+                        ["Basis", f"Regular ${row['regular_tax_basis']:,.0f} · AMT ${row['amt_basis']:,.0f}"],
+                    ],
+                })
+            elif award_type == "NSO":
+                nso_comp += spread
+                details.append({
+                    "id": f"exercise-{row['id']}", "date": row["transaction_date"],
+                    "title": f"Exercise {shares:g} NSO · {row['display_company']}",
+                    "type": "NSO compensation", "amount": spread,
+                    "steps": [
+                        ["Exercise", f"{shares:g} NSO at ${row['price']:,.2f}/share"],
+                        ["Compensation", f"(${row['fmv']:,.2f} FMV − ${row['price']:,.2f} strike) × {shares:g}"],
+                        ["Ordinary income", f"${spread:,.0f}"],
+                        ["New basis", f"${row['regular_tax_basis']:,.0f}"],
+                    ],
+                })
+        elif row["transaction_type"] == "Vesting / RSU settlement":
+            income = row["fmv"] * shares
+            rsu_income += income
+            details.append({
+                "id": f"settlement-{row['id']}", "date": row["transaction_date"],
+                "title": f"Settle {shares:g} RSU · {row['display_company']}",
+                "type": "RSU income", "amount": income,
+                "steps": [
+                    ["Gross shares vested", f"{shares:g} shares"],
+                    ["Settlement value", f"${row['fmv']:,.2f}/share"],
+                    ["Compensation income", f"${income:,.0f}"],
+                    ["Regular-tax basis", f"${row['regular_tax_basis']:,.0f}"],
+                ],
+            })
+        elif row["transaction_type"] == "Tax withholding":
+            withholding += shares * (row["price"] or row["fmv"])
+        elif row["transaction_type"] == "Share sale":
+            source = all_transactions.get(row["selected_lot_id"])
+            acquired = source["transaction_date"] if source else row["holding_period_start"]
+            source_shares = source["shares"] if source else shares
+            regular_basis = (source["regular_tax_basis"] if source else row["regular_tax_basis"]) * shares / source_shares if source_shares else 0
+            amt_basis = (source["amt_basis"] if source else row["amt_basis"]) * shares / source_shares if source_shares else regular_basis
+            sale_proceeds = row["price"] * shares - row["fees"]
+            gain = sale_proceeds - regular_basis
+            amt_gain = sale_proceeds - amt_basis
+            days = (datetime.strptime(row["transaction_date"], "%Y-%m-%d") - datetime.strptime(acquired, "%Y-%m-%d")).days if acquired else 0
+            term = "Long-term" if days >= 365 else "Short-term"
+            classification = term
+            ordinary = 0
+            if source and source["award_type"] == "ISO":
+                grant_days = (datetime.strptime(row["transaction_date"], "%Y-%m-%d") - datetime.strptime(source["grant_date"], "%Y-%m-%d")).days
+                qualifying = days >= 365 and grant_days >= 730
+                classification = "Qualifying disposition" if qualifying else "Disqualifying disposition"
+                if not qualifying:
+                    exercise_spread = max(0, (source["fmv"] - source["price"]) * shares)
+                    ordinary = max(0, min(exercise_spread, sale_proceeds - (source["price"] * shares)))
+                    iso_comp += ordinary
+                    gain -= ordinary
+            if term == "Long-term":
+                ltcg += gain
+            else:
+                stcg += gain
+            proceeds += sale_proceeds
+            capital_sales.append({
+                "id": row["id"], "date": row["transaction_date"], "company": row["display_company"],
+                "shares": shares, "proceeds": sale_proceeds, "basis": regular_basis, "gain": gain,
+                "amt_gain": amt_gain, "term": term, "classification": classification,
+            })
+            details.append({
+                "id": f"sale-{row['id']}", "date": row["transaction_date"],
+                "title": f"Sell {shares:g} shares · {row['display_company']}",
+                "type": classification, "amount": gain,
+                "steps": [
+                    ["Sale", f"{shares:g} shares at ${row['price']:,.2f}/share"],
+                    ["Holding period", f"{days} days from exercise/settlement"],
+                    ["Classification", classification],
+                    ["Ordinary compensation", f"${ordinary:,.0f}"],
+                    ["Capital gain", f"${gain:,.0f}"],
+                    ["AMT gain", f"${amt_gain:,.0f} using AMT basis"],
+                ],
+            })
+
+    stcg += profile["short_term"]
+    ltcg += profile["long_term"] - profile["carryforward"]
+    ordinary = profile["salary"] + profile["other_income"] + iso_comp + nso_comp + rsu_income + stcg
+    taxable_ordinary = max(0, ordinary - deduction)
+    brackets = (
+        [(23850, .10), (96950, .12), (206700, .22), (394600, .24), (501050, .32), (751600, .35), (10**12, .37)]
+        if joint else
+        [(11925, .10), (48475, .12), (103350, .22), (197300, .24), (250525, .32), (626350, .35), (10**12, .37)]
+    )
+    regular_federal = progressive_tax(taxable_ordinary, brackets) + max(0, ltcg) * .15
+    exemption = 137000 if joint else 88100
+    amti = max(0, ordinary + max(0, ltcg) + amt_adjustment - deduction)
+    tentative_minimum_tax = max(0, amti - exemption) * .26
+    amt = max(0, tentative_minimum_tax - regular_federal)
+    credit_used = min(profile["amt_credit"], max(0, regular_federal - tentative_minimum_tax))
+    federal = max(0, regular_federal + amt - credit_used)
+    state_rate = 0 if profile["state"] in {"Texas", "Washington"} else (.085 if profile["state"] == "California" else .06)
+    state_tax = max(0, ordinary + ltcg - deduction) * state_rate
+    cash_required = max(0, federal + state_tax - withholding)
+    return {
+        "tax_year": tax_year, "profile_found": bool(profile_row), "filing_status": status,
+        "state": profile["state"], "summary": {
+            "federal_tax": federal, "state_tax": state_tax, "amt": amt,
+            "ordinary_income": ordinary, "stcg": stcg, "ltcg": ltcg,
+            "cash_required": cash_required, "after_tax_proceeds": proceeds - cash_required,
+            "withholding": withholding,
+        },
+        "income": {
+            "salary": profile["salary"], "other_income": profile["other_income"],
+            "iso_compensation": iso_comp, "nso_compensation": nso_comp, "rsu_income": rsu_income,
+        },
+        "amt": {
+            "iso_exercise_adjustment": amt_adjustment, "amti": amti,
+            "exemption": exemption, "tentative_minimum_tax": tentative_minimum_tax,
+            "regular_tax": regular_federal, "amt_due": amt,
+            "credit_available": profile["amt_credit"], "credit_used": credit_used,
+        },
+        "capital": {"short_term": stcg, "long_term": ltcg, "sales": capital_sales},
+        "iso_exercises": iso_exercises, "details": details,
+        "assumptions": {"deduction": deduction, "state_rate": state_rate},
+    }
+
+
+@app.get("/api/tax-results/<int:tax_year>")
+def get_tax_results(tax_year):
+    if not 1900 <= tax_year <= 2100:
+        return jsonify(error="Tax year is out of range."), 400
+    return jsonify(tax_results_for_year(get_db(), tax_year))
 
 
 @app.get("/api/profile/<int:tax_year>")
@@ -1131,11 +1480,16 @@ def save_profile():
 @app.get("/api/awards")
 def get_awards():
     database = get_db()
+    if consolidate_duplicate_awards(database):
+        rebuild_portfolio_lots(database)
+        database.commit()
     as_of = request.args.get("as_of") or datetime.now().date().isoformat()
     rows = database.execute(
         "SELECT * FROM equity_awards ORDER BY grant_date DESC, id DESC"
     ).fetchall()
-    return jsonify([award_response(database, row, as_of) for row in rows])
+    response = jsonify([award_response(database, row, as_of) for row in rows])
+    response.headers["Cache-Control"] = "no-store, max-age=0"
+    return response
 
 
 @app.post("/api/awards")
@@ -1165,11 +1519,23 @@ def add_award():
                 "INSERT INTO vesting_events (award_id, vest_date, shares) VALUES (?, ?, ?)",
                 (cursor.lastrowid, vest_date, shares),
             )
+        new_id = cursor.lastrowid
+        consolidate_duplicate_awards(database)
+        if values[12]:
+            canonical = database.execute(
+                """SELECT id FROM equity_awards
+                   WHERE LOWER(TRIM(company)) = LOWER(TRIM(?)) AND award_type = ?
+                     AND LOWER(TRIM(grant_number)) = LOWER(TRIM(?))
+                   ORDER BY id LIMIT 1""",
+                (values[0], values[2], values[12]),
+            ).fetchone()
+            if canonical:
+                new_id = canonical["id"]
         database.commit()
     except sqlite3.Error:
         database.rollback()
         raise
-    return jsonify(message="Award added", id=cursor.lastrowid), 201
+    return jsonify(message="Award added", id=new_id), 201
 
 
 @app.put("/api/awards/<int:award_id>")
@@ -1241,6 +1607,8 @@ def update_award(award_id):
             "UPDATE equity_awards SET shares_vested = ? WHERE id = ?",
             (sum(shares for vest_date, shares in events if vest_date <= datetime.now().date().isoformat()), award_id),
         )
+    consolidate_duplicate_awards(database)
+    rebuild_portfolio_lots(database)
     database.commit()
     return jsonify(message="Award updated", id=award_id)
 
@@ -1282,6 +1650,8 @@ def import_awards():
                 vesting_duration_months, cliff_months) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 award_values(row),
             )
+        consolidate_duplicate_awards(database)
+        rebuild_portfolio_lots(database)
         database.commit()
     except (UnicodeDecodeError, ValueError, sqlite3.Error) as error:
         get_db().rollback()
@@ -1291,14 +1661,90 @@ def import_awards():
 
 @app.get("/api/exercises")
 def get_exercises():
-    rows = get_db().execute(
+    database = get_db()
+    if backfill_exercise_records(database):
+        database.commit()
+    rows = database.execute(
         """SELECT exercises.*, equity_awards.company, equity_awards.security,
-                  equity_awards.award_type, equity_awards.grant_date
+                  equity_awards.award_type, equity_awards.grant_date, equity_awards.grant_number
            FROM exercises
            JOIN equity_awards ON equity_awards.id = exercises.award_id
            ORDER BY exercise_date DESC, exercises.id DESC"""
     ).fetchall()
     return jsonify([dict(row) for row in rows])
+
+
+@app.post("/api/exercises/estimate")
+def estimate_exercise_tax():
+    data = request.get_json(silent=True) or {}
+    database = get_db()
+    try:
+        award_id = int(data.get("award_id"))
+        exercise_date = str(data.get("exercise_date") or "").strip()
+        shares = number(data.get("shares"))
+        fmv = number(data.get("fmv"))
+        exercise_price = number(data.get("exercise_price"))
+        if not exercise_date or shares <= 0 or min(fmv, exercise_price) < 0:
+            raise ValueError("Select a grant and enter the exercise date, shares, FMV, and exercise price.")
+        award = database.execute("SELECT * FROM equity_awards WHERE id = ?", (award_id,)).fetchone()
+        if award is None or award["award_type"] not in {"ISO", "NSO"}:
+            raise ValueError("Select a valid ISO or NSO award.")
+        tax_year = int(exercise_date[:4])
+        annual = tax_results_for_year(database, tax_year)
+        spread = max(0, (fmv - exercise_price) * shares)
+        old_spread = 0
+        exercise_id = data.get("exercise_id")
+        if exercise_id:
+            old = database.execute(
+                """SELECT e.*, a.award_type FROM exercises e
+                   JOIN equity_awards a ON a.id = e.award_id WHERE e.id = ?""",
+                (int(exercise_id),),
+            ).fetchone()
+            if old and old["exercise_date"].startswith(str(tax_year)):
+                old_spread = max(0, (old["fmv"] - old["exercise_price"]) * old["shares"])
+
+        status = annual["filing_status"]
+        joint = status in {"Married filing jointly", "Qualifying surviving spouse"}
+        brackets = (
+            [(23850, .10), (96950, .12), (206700, .22), (394600, .24), (501050, .32), (751600, .35), (10**12, .37)]
+            if joint else
+            [(11925, .10), (48475, .12), (103350, .22), (197300, .24), (250525, .32), (626350, .35), (10**12, .37)]
+        )
+        regular_federal = state_tax = amt_tax = 0
+        if award["award_type"] == "NSO":
+            base_ordinary = max(0, annual["summary"]["ordinary_income"] - old_spread)
+            base_taxable = max(0, base_ordinary - annual["assumptions"]["deduction"])
+            regular_federal = max(
+                0, progressive_tax(base_taxable + spread, brackets) - progressive_tax(base_taxable, brackets)
+            )
+            state_tax = spread * annual["assumptions"]["state_rate"]
+        else:
+            base_amti = max(0, annual["amt"]["amti"] - old_spread)
+            exemption = annual["amt"]["exemption"]
+            regular_tax = annual["amt"]["regular_tax"]
+            base_tmt = max(0, base_amti - exemption) * .26
+            new_tmt = max(0, base_amti + spread - exemption) * .26
+            base_amt = max(0, base_tmt - regular_tax)
+            new_amt = max(0, new_tmt - regular_tax)
+            amt_tax = max(0, new_amt - base_amt)
+        regular_tax_total = regular_federal + state_tax
+        return jsonify(
+            tax_year=tax_year,
+            award_type=award["award_type"],
+            spread=spread,
+            compensation_income=spread if award["award_type"] == "NSO" else 0,
+            amt_adjustment=spread if award["award_type"] == "ISO" else 0,
+            regular_federal_tax=regular_federal,
+            state_tax=state_tax,
+            non_amt_tax=regular_tax_total,
+            amt_tax=amt_tax,
+            total_estimated_tax=regular_tax_total + amt_tax,
+            exercise_cost=exercise_price * shares,
+            estimated_cash_required=exercise_price * shares + regular_tax_total + amt_tax,
+            profile_found=annual["profile_found"],
+        )
+    except (TypeError, ValueError) as error:
+        return jsonify(error=str(error)), 400
 
 
 @app.post("/api/exercises")
@@ -1377,6 +1823,117 @@ def add_exercise():
         database.rollback()
         return jsonify(error=str(error)), 400
     return jsonify(message="Exercise saved and acquisition lot created", id=cursor.lastrowid), 201
+
+
+@app.put("/api/exercises/<int:exercise_id>")
+def update_exercise(exercise_id):
+    data = request.get_json(silent=True) or {}
+    database = get_db()
+    existing = database.execute("SELECT * FROM exercises WHERE id = ?", (exercise_id,)).fetchone()
+    if existing is None:
+        return jsonify(error="Exercise not found."), 404
+    try:
+        award_id = int(data.get("award_id"))
+        exercise_date = str(data.get("exercise_date") or "").strip()
+        fmv = number(data.get("fmv"))
+        shares = number(data.get("shares"))
+        exercise_price = number(data.get("exercise_price"))
+        if not exercise_date:
+            raise ValueError("Exercise date is required.")
+        if min(fmv, shares, exercise_price) < 0 or shares <= 0:
+            raise ValueError("Shares must be positive; FMV and exercise price cannot be negative.")
+        award = database.execute("SELECT * FROM equity_awards WHERE id = ?", (award_id,)).fetchone()
+        if award is None or award["award_type"] not in {"ISO", "NSO"}:
+            raise ValueError("Select a valid ISO or NSO award.")
+        if exercise_date < award["grant_date"]:
+            raise ValueError("Exercise date cannot be before the grant date.")
+        if award["expiration_date"] and exercise_date > award["expiration_date"]:
+            raise ValueError("Exercise date cannot be after the option expiration date.")
+        available = vested_shares(database, award_id, exercise_date, award["shares_vested"])
+        legacy_exercised = database.execute(
+            """SELECT COALESCE(SUM(shares), 0) FROM exercises
+               WHERE award_id = ? AND exercise_date <= ? AND transaction_id IS NULL AND id != ?""",
+            (award_id, exercise_date, exercise_id),
+        ).fetchone()[0]
+        transaction_exercised = database.execute(
+            """SELECT COALESCE(SUM(shares), 0) FROM transactions
+               WHERE award_id = ? AND transaction_type = 'Option exercise'
+                 AND transaction_status = 'Historical' AND transaction_date <= ? AND id != ?""",
+            (award_id, exercise_date, existing["transaction_id"] or -1),
+        ).fetchone()[0]
+        if legacy_exercised + transaction_exercised + shares > available:
+            remaining = max(0, available - legacy_exercised - transaction_exercised)
+            raise ValueError(f"Exercise exceeds vested and unexercised options ({remaining:g} available).")
+        timeline = [(exercise_date, shares)]
+        timeline.extend(
+            (row["transaction_date"], row["shares"])
+            for row in database.execute(
+                """SELECT transaction_date, shares FROM transactions
+                   WHERE award_id = ? AND transaction_type = 'Option exercise'
+                     AND transaction_status = 'Historical' AND id != ?""",
+                (award_id, existing["transaction_id"] or -1),
+            ).fetchall()
+        )
+        timeline.extend(
+            (row["exercise_date"], row["shares"])
+            for row in database.execute(
+                """SELECT exercise_date, shares FROM exercises
+                   WHERE award_id = ? AND transaction_id IS NULL AND id != ?""",
+                (award_id, exercise_id),
+            ).fetchall()
+        )
+        cumulative = 0
+        for event_date, event_shares in sorted(timeline):
+            cumulative += event_shares
+            vested = vested_shares(database, award_id, event_date, award["shares_vested"])
+            if cumulative > vested:
+                raise ValueError("This change would exceed vested options on a later exercise date.")
+        regular_basis = exercise_price * shares
+        amt_basis = fmv * shares if award["award_type"] == "ISO" else regular_basis
+        if existing["transaction_id"]:
+            database.execute(
+                """UPDATE transactions SET award_id = ?, company = ?, security = ?,
+                     transaction_date = ?, shares = ?, fmv = ?, price = ?,
+                     regular_tax_basis = ?, amt_basis = ?, holding_period_start = ?, selected_lots = ?
+                   WHERE id = ?""",
+                (
+                    award_id, award["company"], award["security"], exercise_date, shares, fmv,
+                    exercise_price, regular_basis, amt_basis, exercise_date, f"Award #{award_id}",
+                    existing["transaction_id"],
+                ),
+            )
+            database.execute(
+                """UPDATE transactions SET award_id = ?, company = ?, security = ?
+                   WHERE selected_lot_id = ?""",
+                (award_id, award["company"], award["security"], existing["transaction_id"]),
+            )
+        else:
+            values = (
+                "Option exercise", exercise_date, "Historical", shares, fmv, exercise_price, 0,
+                f"Award #{award_id}", "Created from Exercises page", None,
+                regular_basis, amt_basis, exercise_date,
+            )
+            placeholders = ", ".join("?" for _ in TRANSACTION_FIELDS)
+            transaction = database.execute(
+                f"""INSERT INTO transactions ({', '.join(TRANSACTION_FIELDS)}, company, security, award_id)
+                    VALUES ({placeholders}, ?, ?, ?)""",
+                (*values, award["company"], award["security"], award_id),
+            )
+            database.execute(
+                "UPDATE exercises SET transaction_id = ? WHERE id = ?",
+                (transaction.lastrowid, exercise_id),
+            )
+        database.execute(
+            """UPDATE exercises SET award_id = ?, exercise_date = ?, fmv = ?,
+               shares = ?, exercise_price = ? WHERE id = ?""",
+            (award_id, exercise_date, fmv, shares, exercise_price, exercise_id),
+        )
+        rebuild_portfolio_lots(database)
+        database.commit()
+    except (TypeError, ValueError, sqlite3.Error) as error:
+        database.rollback()
+        return jsonify(error=str(error)), 400
+    return jsonify(message="Exercise updated", id=exercise_id)
 
 
 @app.delete("/api/exercises/<int:exercise_id>")
@@ -1466,6 +2023,7 @@ def add_transaction():
             f"""INSERT INTO transactions ({', '.join(TRANSACTION_FIELDS)}, company, security, award_id, scenario_name)
                 VALUES ({placeholders}, ?, ?, ?, ?)""", (*values, *associations)
         )
+        sync_exercise_record(database, cursor.lastrowid)
         rebuild_portfolio_lots(database)
         database.commit()
     except ValueError as error:
@@ -1489,6 +2047,7 @@ def update_transaction(transaction_id):
         if cursor.rowcount == 0:
             database.rollback()
             return jsonify(error="Transaction not found."), 404
+        sync_exercise_record(database, transaction_id)
         rebuild_portfolio_lots(database)
         database.commit()
     except ValueError as error:
@@ -1500,6 +2059,7 @@ def update_transaction(transaction_id):
 @app.delete("/api/transactions/<int:transaction_id>")
 def delete_transaction(transaction_id):
     database = get_db()
+    database.execute("DELETE FROM exercises WHERE transaction_id = ?", (transaction_id,))
     cursor = database.execute("DELETE FROM transactions WHERE id = ?", (transaction_id,))
     if cursor.rowcount == 0:
         database.rollback()
@@ -1529,6 +2089,10 @@ def get_lots():
         lot["regular_tax_basis_per_share"] = lot["regular_tax_basis"] / shares if shares else 0
         lot["amt_basis_per_share"] = lot["amt_basis"] / shares if shares else 0
         lot["status"] = "Fully sold" if lot["shares_remaining"] <= 0 else "Open"
+        exercise = database.execute(
+            "SELECT id FROM exercises WHERE transaction_id = ?", (lot["source_transaction_id"],)
+        ).fetchone()
+        lot["exercise_id"] = exercise["id"] if exercise else None
         history = database.execute(
             """SELECT id, transaction_type, transaction_date, transaction_status, shares,
                       fmv, price, fees, notes
@@ -1614,17 +2178,20 @@ def import_portfolio():
             supported_sheets += 1
         if not supported_sheets:
             raise ValueError("No supported By Benefit Type or gain/loss worksheet was found.")
+        merged_awards = consolidate_duplicate_awards(database)
+        backfill_exercise_records(database)
+        rebuild_portfolio_lots(database)
         database.execute(
             "INSERT INTO import_batches (file_hash, filename, awards_imported, transactions_imported) VALUES (?, ?, ?, ?)",
-            (file_hash, upload.filename or "portfolio.csv", award_count, transaction_count),
+            (file_hash, upload.filename or "portfolio.csv", max(0, award_count - merged_awards), transaction_count),
         )
         database.commit()
     except (UnicodeDecodeError, ValueError, sqlite3.Error, zipfile.BadZipFile, ET.ParseError, KeyError) as error:
         database.rollback()
         return jsonify(error=f"Could not import portfolio: {error}"), 400
     return jsonify(
-        message=f"Imported {award_count} awards and {transaction_count} transactions. Lot inventory rebuilt.",
-        awards=award_count,
+        message=f"Imported {max(0, award_count - merged_awards)} new awards and {transaction_count} transactions. Matching grant numbers were consolidated.",
+        awards=max(0, award_count - merged_awards),
         transactions=transaction_count,
     )
 

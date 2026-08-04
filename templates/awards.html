@@ -13,16 +13,16 @@
       <a class="active" href="/awards">Equity Awards</a>
       <a href="/exercises">Exercises</a>
       <a href="/transactions">Transactions</a>
-      <a href="/lots">Lot inventory</a>
       <a href="/scenarios">Scenarios</a>
+      <a href="/tax-results">Tax Results</a>
       <a href="/imports">Imports</a>
     </div>
   </nav>
   <main class="container awards-page">
     <header>
       <div>
-        <h1>Equity awards</h1>
-        <p>Track your stock options and restricted stock units.</p>
+        <h1>Equity awards &amp; holdings</h1>
+        <p>Manage grants, vesting, acquired shares, and tax basis in one place.</p>
       </div>
       <div class="header-actions">
         <label class="as-of-field"><span>Vested as of</span><input type="date" id="vestingAsOf"></label>
@@ -32,10 +32,27 @@
       </div>
     </header>
 
-    <section class="summary-grid" aria-label="Award summary">
+    <section class="summary-grid award-summary-grid" aria-label="Award summary">
       <div><span>Total awards</span><strong id="awardCount">0</strong></div>
       <div><span>Shares granted</span><strong id="totalGranted">0</strong></div>
       <div><span>Shares vested</span><strong id="totalVested">0</strong></div>
+      <div><span>Shares remaining</span><strong id="totalRemaining">0</strong></div>
+    </section>
+
+    <section class="vesting-overview-card" aria-labelledby="vestingOverviewTitle">
+      <div class="vesting-chart-heading">
+        <div><h2 id="vestingOverviewTitle">Portfolio vesting</h2><p>See when shares vest across all of your grants.</p></div>
+        <div class="vesting-chart-controls">
+          <div class="chart-segments" aria-label="Chart view">
+            <button class="selected" type="button" data-chart-mode="cumulative">Cumulative</button>
+            <button type="button" data-chart-mode="period">By quarter</button>
+          </div>
+          <label><span>Award type</span><select id="vestingTypeFilter"><option value="all">All awards</option><option value="ISO">ISO</option><option value="NSO">NSO</option><option value="RSU">RSU</option></select></label>
+        </div>
+      </div>
+      <div class="vesting-chart-summary" id="vestingChartSummary"></div>
+      <div class="vesting-chart" id="portfolioVestingChart" role="img" aria-label="Combined vesting schedule chart"></div>
+      <div class="chart-legend"><span><i class="legend-vested"></i>Vested</span><span><i class="legend-scheduled"></i>Scheduled</span><span><i class="legend-today"></i>As-of date</span></div>
     </section>
 
     <section class="form-card award-form-card" id="awardFormCard" hidden>
@@ -95,6 +112,19 @@
     <section class="awards-list" id="awardsList" aria-live="polite">
       <div class="empty-state"><h2>No equity awards yet</h2><p>Add your first award to begin tracking it.</p></div>
     </section>
+
+    <details class="all-lots-section" id="allLots">
+      <summary><div><strong>All tax lots</strong><small>Compare basis and holding periods across every grant.</small></div><span id="allLotsCount">0 lots</span></summary>
+      <div class="all-lots-content">
+        <div class="holdings-toolbar"><select id="lotFilter" aria-label="Filter lots"><option value="All">All lots</option><option value="Open">Open lots</option><option value="Fully sold">Fully sold lots</option></select><button class="secondary-button danger" type="button" data-clear-page="lots" data-clear-label="lot inventory" data-clear-message="Acquisition transactions and dependent sales that created these lots will also be removed.">Clear lot data</button></div>
+        <section class="summary-grid" aria-label="Lot summary">
+          <div><span>Shares acquired</span><strong id="sharesAcquired">0</strong></div>
+          <div><span>Shares sold</span><strong id="sharesSold">0</strong></div>
+          <div><span>Shares remaining</span><strong id="sharesRemaining">0</strong></div>
+        </section>
+        <section class="lot-list" id="lotsBody"></section>
+      </div>
+    </details>
   </main>
   <div class="toast" id="toast">Award saved</div>
   <script src="{{ url_for('static', filename='awards.js') }}"></script>
